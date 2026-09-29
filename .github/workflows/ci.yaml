@@ -1,9 +1,15 @@
 on:
-  - pull_request
+  workflow_dispatch:
+    inputs:
+      test-filter:
+        description: "Optional node --test-name-pattern selector"
+        required: false
+        default: ""
 
 jobs:
   ci:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -11,6 +17,8 @@ jobs:
 
       - name: Install Node.js
         uses: actions/setup-node@v3
+        with:
+          node-version: 18
 
       - uses: pnpm/action-setup@v2
         name: Install pnpm
@@ -23,7 +31,7 @@ jobs:
         run: |
           echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
 
-      - uses: actions/cache@v3
+      - uses: actions/cache@v4
         name: Setup pnpm cache
         with:
           path: ${{ env.STORE_PATH }}
@@ -38,7 +46,22 @@ jobs:
         run: pnpm build
 
       - name: Test
-        run: pnpm test
+        run: |
+          if [ -n "${{ inputs.test-filter }}" ]; then
+            node --no-warnings --loader tsm --enable-source-maps --test-reporter tap --test-name-pattern="${{ inputs.test-filter }}" --test src/*.spec.ts
+          else
+            pnpm test
+          fi
 
       - name: Typecheck Tests
         run: pnpm test-typecheck
+
+      - name: Pack
+        run: npm pack
+
+      - name: Upload package tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: turbo-stream-tgz
+          path: turbo-stream-*.tgz
+          if-no-files-found: error
